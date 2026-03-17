@@ -7,6 +7,8 @@ export declare const human: {
     divider: () => void;
     blank: () => void;
     authentic: (anchor: {
+        id?: string;
+        hash: string;
         timestamp: string;
         blockNumber: number;
         transactionSignature: string;

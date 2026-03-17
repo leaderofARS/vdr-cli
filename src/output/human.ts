@@ -22,6 +22,8 @@ export const human = {
   },
   blank: () => console.log(),
   authentic: (anchor: {
+    id?: string
+    hash: string
     timestamp: string
     blockNumber: number
     transactionSignature: string
@@ -32,6 +34,8 @@ export const human = {
     console.log()
     console.log(chalk.gray('This document is identical to its anchored version.'))
     console.log()
+    if (anchor.id) human.label('Anchor ID', anchor.id)
+    human.label('Hash', anchor.hash)
     human.label('Anchored', anchor.timestamp)
     human.label('Block', anchor.blockNumber.toLocaleString())
     human.label('Transaction', anchor.transactionSignature)

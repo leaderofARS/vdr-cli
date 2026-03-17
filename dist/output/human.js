@@ -32,6 +32,9 @@ exports.human = {
         console.log();
         console.log(chalk_1.default.gray('This document is identical to its anchored version.'));
         console.log();
+        if (anchor.id)
+            exports.human.label('Anchor ID', anchor.id);
+        exports.human.label('Hash', anchor.hash);
         exports.human.label('Anchored', anchor.timestamp);
         exports.human.label('Block', anchor.blockNumber.toLocaleString());
         exports.human.label('Transaction', anchor.transactionSignature);

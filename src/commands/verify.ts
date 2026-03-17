@@ -50,6 +50,8 @@ export const verifyCommand = new Command('verify')
           quiet.authentic()
         } else {
           human.authentic({
+            id: result.anchor?.id,
+            hash: result.hash,
             timestamp: result.anchor?.timestamp || new Date().toISOString(),
             blockNumber: result.anchor?.blockNumber || 0,
             transactionSignature: result.anchor?.transactionSignature || '',
