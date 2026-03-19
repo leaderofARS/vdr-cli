@@ -11,7 +11,6 @@ const errors_1 = require("../utils/errors");
 const spinner_1 = require("../utils/spinner");
 const chalk_1 = __importDefault(require("chalk"));
 const axios_1 = __importDefault(require("axios"));
-const config_2 = require("@sipheron/vdr-core/dist/client/config");
 exports.certificateCommand = new commander_1.Command('certificate')
     .description('Download the PDF notarization certificate for an anchor')
     .argument('<id>', 'Anchor ID')
@@ -26,7 +25,7 @@ exports.certificateCommand = new commander_1.Command('certificate')
     try {
         spinner.start();
         const network = config_1.config.getNetwork();
-        const baseUrl = config_2.DEFAULTS.baseUrls[network];
+        const baseUrl = 'https://api.sipheron.com';
         const response = await axios_1.default.get(`${baseUrl}/api/hashes/${id}/certificate`, {
             headers: { 'Authorization': `Bearer ${config_1.config.getApiKey()}` },
             responseType: 'arraybuffer'

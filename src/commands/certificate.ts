@@ -5,7 +5,6 @@ import { handleError } from '../utils/errors'
 import { createSpinner } from '../utils/spinner'
 import chalk from 'chalk'
 import axios from 'axios'
-import { DEFAULTS } from '@sipheron/vdr-core/dist/client/config'
 
 export const certificateCommand = new Command('certificate')
   .description('Download the PDF notarization certificate for an anchor')
@@ -26,7 +25,7 @@ export const certificateCommand = new Command('certificate')
       spinner.start()
       
       const network = config.getNetwork() as 'devnet' | 'mainnet'
-      const baseUrl = DEFAULTS.baseUrls[network]
+      const baseUrl = 'https://api.sipheron.com'
       
       const response = await axios.get(`${baseUrl}/api/hashes/${id}/certificate`, {
         headers: { 'Authorization': `Bearer ${config.getApiKey()}` },
