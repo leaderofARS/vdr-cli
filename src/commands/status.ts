@@ -1,68 +1,109 @@
 import { Command } from 'commander'
-import { SipHeron } from '@sipheron/vdr-core'
+import { verifyOnChain, deriveAnchorAddress } from '@sipheron/vdr-core'
 import { isValidHash } from '../utils/file'
 import { createSpinner } from '../utils/spinner'
 import { handleError } from '../utils/errors'
 import { human } from '../output/human'
 import { json } from '../output/json'
-import { config } from '../config'
-import { Connection } from '@solana/web3.js'
+import { PublicKey, Connection } from '@solana/web3.js'
 import chalk from 'chalk'
 
 export const statusCommand = new Command('status')
-  .description('Check the blockchain confirmation status of an anchor')
-  .argument('<hash-or-id>', 'Document hash or anchor ID')
+  .description('Check the on-chain status of an anchored document hash')
+  .argument('<hash>', 'SHA-256 hash of the document (64 hex chars)')
+  .option('--owner <publicKey>', 'Solana public key of the document owner (required for on-chain lookup)')
   .option('-f, --format <format>', 'Output format: human, json', 'human')
   .option('--network <network>', 'Network: devnet, mainnet', 'devnet')
-  .action(async (hashOrId: string, options) => {
-    const spinner = createSpinner('Checking status...')
+  .option('--program-id <id>', 'Custom Solana program ID (advanced)')
+  .action(async (hash: string, options) => {
+    const network = options.network as 'devnet' | 'mainnet'
+
+    if (!isValidHash(hash)) {
+      console.error(chalk.red('\n✗ Invalid hash. Must be a 64-character hex SHA-256 string.\n'))
+      process.exit(3)
+    }
+
+    if (!options.owner) {
+      console.log(chalk.yellow('\n⚠  --owner <publicKey> is required for direct on-chain status.\n'))
+      console.log(chalk.gray('  This is the Solana public key that was used when anchoring.'))
+      console.log(chalk.gray('  Example:'))
+      console.log(chalk.cyan(`    sipheron status ${hash.slice(0, 16)}... --owner <YourWalletPublicKey>\n`))
+      process.exit(1)
+    }
+
+    let ownerPk: PublicKey
+    try {
+      ownerPk = new PublicKey(options.owner)
+    } catch {
+      console.error(chalk.red(`\n✗ Invalid public key: ${options.owner}\n`))
+      process.exit(3)
+    }
+
+    const spinner = createSpinner('Reading from Solana...')
+    if (options.format === 'human') spinner.start()
 
     try {
-      const client = new SipHeron({
-        apiKey: config.getApiKey(),
-        network: options.network
+      // ── Direct on-chain read — zero SipHeron API dependency ─────────────────
+      const result = await verifyOnChain({
+        hash: hash.toLowerCase(),
+        network,
+        ownerPublicKey: ownerPk,
+        ...(options.programId && { programId: options.programId }),
       })
 
-      if (options.format === 'human') spinner.start()
+      // Derive PDA for display
+      const pda = deriveAnchorAddress(hash.toLowerCase(), ownerPk, (options.programId ? new PublicKey(options.programId) : network) as any)
 
-      const status = await client.getStatus(hashOrId)
-
-      // Fallback: If api returns txSignature but block 0 or no timestamp
-      if (status.status === 'confirmed' && status.transactionSignature && (!status.blockNumber || !status.timestamp)) {
-        try {
-          const rpc = options.network === 'mainnet' 
-            ? 'https://api.mainnet-beta.solana.com' 
-            : 'https://api.devnet.solana.com'
-          const conn = new Connection(rpc, 'confirmed')
-          const tx = await conn.getTransaction(status.transactionSignature, { maxSupportedTransactionVersion: 0 })
-          if (tx) {
-            status.blockNumber = tx.slot
-            if (tx.blockTime) {
-              status.timestamp = new Date(tx.blockTime * 1000).toISOString()
-            }
-          }
-        } catch {
-          // ignore RPC errors, keep the API state
-        }
+      // Enrich with block timestamp via public RPC
+      let blockTime: string | undefined
+      let slot = 0
+      if (result.timestamp) {
+        blockTime = new Date(result.timestamp * 1000).toISOString()
       }
 
       spinner.stop()
 
       if (options.format === 'json') {
-        json.print(status)
+        json.print({
+          hash,
+          pda: pda.toBase58(),
+          authentic: result.authentic,
+          isRevoked: result.isRevoked || false,
+          owner: result.owner,
+          timestamp: blockTime,
+          metadata: result.metadata,
+          network,
+          mode: 'direct-onchain',
+        })
         return
       }
 
       console.log()
-      human.label('Hash', hashOrId)
-      human.label(
-        'Status',
-        status.status === 'confirmed'
-          ? chalk.green('Confirmed ✓')
-          : chalk.yellow('Pending...')
-      )
-      human.label('Block', status.blockNumber.toLocaleString())
-      human.label('Timestamp', status.timestamp)
+      human.label('Hash',      hash)
+      human.label('PDA',       pda.toBase58())
+      human.label('Owner',     result.owner || options.owner)
+      human.label('Network',   `Solana ${network}`)
+
+      if (!result.authentic) {
+        human.label('Status', chalk.yellow('NOT FOUND'))
+        console.log()
+        console.log(chalk.gray('No anchor record exists at this PDA on-chain.'))
+        console.log()
+        return
+      }
+
+      if (result.isRevoked) {
+        human.label('Status', chalk.red('REVOKED ✗'))
+      } else {
+        human.label('Status', chalk.green('CONFIRMED ✓'))
+      }
+
+      human.label('Anchored',  blockTime || 'unknown')
+      if (result.metadata) {
+        human.label('Metadata', result.metadata)
+      }
+      console.log()
+      console.log(chalk.gray('Mode: direct on-chain read — no API used'))
       console.log()
 
     } catch (error) {

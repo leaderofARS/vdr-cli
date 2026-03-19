@@ -1,95 +1,77 @@
 import { Command } from 'commander'
-import { SipHeron, anchorToSolana } from '@sipheron/vdr-core'
+import { anchorToSolana, hashDocument } from '@sipheron/vdr-core'
 import { readFileAsBuffer } from '../utils/file'
 import { createSpinner } from '../utils/spinner'
 import { handleError } from '../utils/errors'
 import { human } from '../output/human'
 import { json } from '../output/json'
 import { quiet } from '../output/quiet'
-import { config } from '../config'
 import { readFileSync, existsSync } from 'fs'
 import { SOLANA_KEY_PATH } from '../config/paths'
 import { Keypair } from '@solana/web3.js'
+import chalk from 'chalk'
 
 export const anchorCommand = new Command('anchor')
-  .description('Anchor a document\'s fingerprint to the Solana blockchain')
+  .description('Anchor a document\'s SHA-256 fingerprint directly to the Solana blockchain')
   .argument('<file>', 'Path to the document to anchor')
   .option('-n, --name <name>', 'Human-readable document name')
-  .option('-t, --tag <tag...>', 'Tags in key:value format')
-  .option('-f, --format <format>', 'Output format: human, json, quiet', 'human')
+  .option('-k, --keypair <path>', 'Path to Solana keypair JSON (default: ~/.config/solana/id.json)')
   .option('--network <network>', 'Network: devnet, mainnet', 'devnet')
-  .option('--onchain', 'Anchor directly on-chain using local Solana keypair')
+  .option('-f, --format <format>', 'Output format: human, json, quiet', 'human')
+  .option('--program-id <id>', 'Custom Solana program ID (advanced: override default SipHeron contract)')
   .action(async (filePath: string, options) => {
     const format = options.format
     const network = options.network as 'devnet' | 'mainnet'
+    const keypairPath: string = options.keypair || SOLANA_KEY_PATH
 
-    const spinner = createSpinner('Anchoring document...')
+    // ── Resolve Solana keypair ────────────────────────────────────────────────
+    if (!existsSync(keypairPath)) {
+      console.error(
+        chalk.red(`\n✗ No Solana keypair found at: ${keypairPath}\n`) +
+        chalk.gray('  Generate one with:  solana-keygen new\n') +
+        chalk.gray('  Or specify one with: --keypair <path>\n')
+      )
+      process.exit(3)
+    }
+
+    const spinner = createSpinner('Anchoring document to Solana...')
 
     try {
       const file = readFileAsBuffer(filePath)
-      if (format === 'human') spinner.start()
+      const keypair = Keypair.fromSecretKey(
+        Uint8Array.from(JSON.parse(readFileSync(keypairPath, 'utf-8')))
+      )
 
-      let result: any
-
-      if (options.onchain) {
-        // Direct on-chain mode — uses local Solana keypair
-        if (!existsSync(SOLANA_KEY_PATH)) {
-          spinner.stop()
-          console.error(
-            `No Solana keypair found at ${SOLANA_KEY_PATH}\n` +
-            `Run: solana-keygen new`
-          )
-          process.exit(3)
-        }
-
-        const keyData = JSON.parse(
-          readFileSync(SOLANA_KEY_PATH, 'utf-8')
-        )
-        const keypair = Keypair.fromSecretKey(
-          Uint8Array.from(keyData)
-        )
-
-        const onchainResult = await anchorToSolana({
-          buffer: file,
-          keypair,
-          network,
-          metadata: options.name || filePath.split('/').pop()
-        })
-        
-        result = {
-          id: 'onchain',
-          hash: onchainResult.pda.toString(),
-          transactionSignature: onchainResult.transactionSignature,
-          blockNumber: 0,
-          timestamp: new Date().toISOString(),
-          status: 'confirmed',
-          verificationUrl: onchainResult.explorerUrl,
-          network
-        }
-
-      } else {
-        // Hosted platform mode (or playground if no API key)
-        const client = new SipHeron({
-          apiKey: config.getApiKey(),
-          network
-        })
-
-        const metadata: Record<string, string> = {}
-        if (options.tag) {
-          options.tag.forEach((tag: string) => {
-            const [key, value] = tag.split(':')
-            if (key && value) metadata[key] = value
-          })
-        }
-
-        result = await client.anchor({
-          file,
-          name: options.name || filePath.split('/').pop(),
-          metadata
-        })
+      if (format === 'human') {
+        spinner.start()
       }
 
+      // ── Direct on-chain anchor — zero SipHeron API dependency ───────────────
+      const onchainResult = await anchorToSolana({
+        buffer: file,
+        keypair,
+        network,
+        metadata: options.name || filePath.split('/').pop() || filePath,
+        ...(options.programId && { programId: options.programId }),
+      })
+
       if (format === 'human') spinner.stop()
+
+      // Compute the hash separately for display (anchorToSolana already hashed it internally)
+      const hash = onchainResult.hash
+
+      const result = {
+        id:                   onchainResult.pda,
+        hash,
+        transactionSignature: onchainResult.transactionSignature,
+        blockNumber:          0,
+        timestamp:            new Date().toISOString(),
+        status:               'confirmed',
+        verificationUrl:      onchainResult.explorerUrl,
+        network,
+        pda:                  onchainResult.pda,
+        cost:                 onchainResult.cost,
+      }
 
       if (format === 'json') {
         json.print(result)
@@ -97,20 +79,29 @@ export const anchorCommand = new Command('anchor')
       }
 
       if (format === 'quiet') {
-        quiet.anchored(result.verificationUrl)
+        quiet.anchored(onchainResult.explorerUrl)
         return
       }
 
-      human.anchorResult({
-        id: result.id,
-        hash: result.hash,
-        transactionSignature: result.transactionSignature,
-        blockNumber: result.blockNumber,
-        timestamp: result.timestamp,
-        status: result.status,
-        verificationUrl: result.verificationUrl,
-        network
-      })
+      // Human-readable output
+      console.log()
+      console.log(chalk.green.bold('✓ Anchored to Solana'))
+      console.log()
+      human.label('Hash',        hash.substring(0, 32) + '...')
+      human.label('PDA',         onchainResult.pda)
+      human.label('Transaction', onchainResult.transactionSignature)
+      human.label('Status',      chalk.green('confirmed'))
+      human.label('Network',     `Solana ${network}`)
+      human.label('Cost',        `${onchainResult.cost} lamports`)
+      console.log()
+      console.log(chalk.gray('Solana Explorer:'))
+      console.log(chalk.cyan(onchainResult.explorerUrl))
+      console.log()
+      console.log(chalk.gray('Verify this document later with:'))
+      console.log(chalk.cyan(
+        `  sipheron verify <file> --owner ${keypair.publicKey.toBase58()} --network ${network}`
+      ))
+      console.log()
 
     } catch (error) {
       if (format === 'human') spinner.stop()
