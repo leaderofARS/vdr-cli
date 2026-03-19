@@ -3,7 +3,6 @@ import { createInterface } from 'readline'
 import { config } from '../config'
 import chalk from 'chalk'
 import axios from 'axios'
-import { DEFAULTS } from '@sipheron/vdr-core/dist/client/config'
 
 export const loginCommand = new Command('login')
   .description('Authenticate with your SipHeron API key')
@@ -32,7 +31,7 @@ export const loginCommand = new Command('login')
 
       try {
         const network = config.getNetwork() as 'devnet' | 'mainnet'
-        const baseUrl = DEFAULTS.baseUrls[network]
+        const baseUrl = 'https://api.sipheron.com'
         
         // Validate the key by making a test request directly
         const response = await axios.get(`${baseUrl}/api/keys/me`, {

@@ -11,7 +11,6 @@ const human_1 = require("../output/human");
 const json_1 = require("../output/json");
 const chalk_1 = __importDefault(require("chalk"));
 const axios_1 = __importDefault(require("axios"));
-const config_2 = require("@sipheron/vdr-core/dist/client/config");
 exports.whoamiCommand = new commander_1.Command('whoami')
     .description('Show current account details')
     .option('-f, --format <format>', 'Output format: human, json', 'human')
@@ -24,7 +23,7 @@ exports.whoamiCommand = new commander_1.Command('whoami')
     }
     try {
         const network = config_1.config.getNetwork();
-        const baseUrl = config_2.DEFAULTS.baseUrls[network];
+        const baseUrl = 'https://api.sipheron.com';
         const response = await axios_1.default.get(`${baseUrl}/api/keys/me`, {
             headers: { 'Authorization': `Bearer ${config_1.config.getApiKey()}` }
         });

@@ -5,7 +5,6 @@ import { human } from '../output/human'
 import { json } from '../output/json'
 import chalk from 'chalk'
 import axios from 'axios'
-import { DEFAULTS } from '@sipheron/vdr-core/dist/client/config'
 
 export const whoamiCommand = new Command('whoami')
   .description('Show current account details')
@@ -22,7 +21,7 @@ export const whoamiCommand = new Command('whoami')
 
     try {
       const network = config.getNetwork() as 'devnet' | 'mainnet'
-      const baseUrl = DEFAULTS.baseUrls[network]
+      const baseUrl = 'https://api.sipheron.com'
       
       const response = await axios.get(`${baseUrl}/api/keys/me`, {
         headers: { 'Authorization': `Bearer ${config.getApiKey()}` }

@@ -9,7 +9,6 @@ const readline_1 = require("readline");
 const config_1 = require("../config");
 const chalk_1 = __importDefault(require("chalk"));
 const axios_1 = __importDefault(require("axios"));
-const config_2 = require("@sipheron/vdr-core/dist/client/config");
 exports.loginCommand = new commander_1.Command('login')
     .description('Authenticate with your SipHeron API key')
     .action(async () => {
@@ -29,7 +28,7 @@ exports.loginCommand = new commander_1.Command('login')
         }
         try {
             const network = config_1.config.getNetwork();
-            const baseUrl = config_2.DEFAULTS.baseUrls[network];
+            const baseUrl = 'https://api.sipheron.com';
             // Validate the key by making a test request directly
             const response = await axios_1.default.get(`${baseUrl}/api/keys/me`, {
                 headers: { 'Authorization': `Bearer ${apiKey.trim()}` }
