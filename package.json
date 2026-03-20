@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -53,5 +53,10 @@
   "homepage": "https://sipheron.com",
   "publishConfig": {
     "access": "public"
+  },
+  "jest": {
+    "modulePathIgnorePatterns": [
+      "<rootDir>/sipheron-vdr-examples/"
+    ]
   }
 }
